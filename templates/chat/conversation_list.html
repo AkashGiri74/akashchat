@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Conversations - AkashChat{% endblock %}
+
+{% block main_class %}container-fluid p-0{% endblock %}
+
+{% block content %}
+<div class="row g-0 vh-100">
+    <!-- Sidebar -->
+    <div class="col-md-3 col-lg-2 bg-light border-end">
+        <div class="d-flex flex-column h-100">
+            <!-- New Conversation Button -->
+            <div class="p-3 border-bottom">
+                <button class="btn btn-primary w-100" id="newConversationBtn">
+                    <i class="bi bi-plus-circle me-2"></i>New Conversation
+                </button>
+            </div>
+
+            <!-- Conversations List -->
+            <div class="flex-grow-1 overflow-auto">
+                <div class="list-group list-group-flush" id="conversationsList">
+                    {% for conversation in conversations %}
+                    <a href="{% url 'chat:conversation_detail' conversation.id %}" 
+                       class="list-group-item list-group-item-action border-0 py-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1 me-2">
+                                <h6 class="mb-1 text-truncate">{{ conversation.title }}</h6>
+                                <small class="text-muted">{{ conversation.updated_at|timesince }} ago</small>
+                            </div>
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" 
+                                        type="button" data-bs-toggle="dropdown">
+                                    <i class="bi bi-three-dots"></i>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li>
+                                        <a class="dropdown-item rename-conversation" 
+                                           href="#" data-conversation-id="{{ conversation.id }}">
+                                            <i class="bi bi-pencil me-2"></i>Rename
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item text-danger delete-conversation" 
+                                           href="#" data-conversation-id="{{ conversation.id }}">
+                                            <i class="bi bi-trash me-2"></i>Delete
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </a>
+                    {% empty %}
+                    <div class="p-3 text-center text-muted">
+                        <i class="bi bi-chat-left-text display-4 d-block mb-3"></i>
+                        <p>No conversations yet.<br>Start a new conversation to get started!</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="col-md-9 col-lg-10">
+        <div class="d-flex flex-column h-100 justify-content-center align-items-center text-center">
+            <i class="bi bi-chat-dots text-primary display-1 mb-4"></i>
+            <h2 class="mb-3">Welcome to AkashChat</h2>
+            <p class="text-muted mb-4">Select a conversation from the sidebar or start a new one to begin chatting with AI.</p>
+            <button class="btn btn-primary btn-lg" id="startNewConversationBtn">
+                <i class="bi bi-plus-circle me-2"></i>Start New Conversation
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Rename Conversation Modal -->
+<div class="modal fade" id="renameModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Rename Conversation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="renameForm">
+                    <div class="mb-3">
+                        <label for="conversationTitle" class="form-label">Conversation Title</label>
+                        <input type="text" class="form-control" id="conversationTitle" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveRenameBtn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Conversation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this conversation? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const newConversationBtn = document.getElementById('newConversationBtn');
+    const startNewConversationBtn = document.getElementById('startNewConversationBtn');
+    const renameModal = new bootstrap.Modal(document.getElementById('renameModal'));
+    const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    
+    let currentConversationId = null;
+
+    // Create new conversation
+    function createNewConversation() {
+        fetch('{% url "chat:create_conversation" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                window.location.href = `/conversations/${data.id}/`;
+            }
+        })
+        .catch(error => {
+            console.error('Error creating conversation:', error);
+            alert('Failed to create new conversation');
+        });
+    }
+
+    newConversationBtn.addEventListener('click', createNewConversation);
+    startNewConversationBtn.addEventListener('click', createNewConversation);
+
+    // Rename conversation
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.rename-conversation')) {
+            e.preventDefault();
+            currentConversationId = e.target.closest('.rename-conversation').dataset.conversationId;
+            const currentTitle = e.target.closest('.list-group-item').querySelector('h6').textContent;
+            document.getElementById('conversationTitle').value = currentTitle;
+            renameModal.show();
+        }
+    });
+
+    document.getElementById('saveRenameBtn').addEventListener('click', function() {
+        const newTitle = document.getElementById('conversationTitle').value.trim();
+        if (!newTitle) {
+            alert('Title cannot be empty');
+            return;
+        }
+
+        fetch(`/conversations/${currentConversationId}/rename/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ title: newTitle })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error || 'Failed to rename conversation');
+            }
+        })
+        .catch(error => {
+            console.error('Error renaming conversation:', error);
+            alert('Failed to rename conversation');
+        });
+    });
+
+    // Delete conversation
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.delete-conversation')) {
+            e.preventDefault();
+            currentConversationId = e.target.closest('.delete-conversation').dataset.conversationId;
+            deleteModal.show();
+        }
+    });
+
+    document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+        fetch(`/conversations/${currentConversationId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Failed to delete conversation');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting conversation:', error);
+            alert('Failed to delete conversation');
+        });
+    });
+
+    // CSRF token helper
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+});
+</script>
+{% endblock %}
+
